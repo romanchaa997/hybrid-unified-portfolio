@@ -1,0 +1,160 @@
+.github/workflows/ci-cd.ymlname: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pylint flake8 black isort
+    
+    - name: Lint with Pylint
+      run: |
+        pylint src/ --disable=missing-docstring,too-few-public-methods
+      continue-on-error: true
+    
+    - name: Format check with Black
+      run: |
+        black --check src/
+      continue-on-error: true
+    
+    - name: Import sorting with isort
+      run: |
+        isort --check-only src/
+      continue-on-error: true
+    
+    - name: Flake8 check
+      run: |
+        flake8 src/ --max-line-length=100
+      continue-on-error: true
+
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_DB: portfolio_test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:6
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-cov pytest-asyncio
+    
+    - name: Run tests
+      env:
+        DATABASE_URL: postgresql://test:test@localhost:5432/portfolio_test
+        REDIS_URL: redis://localhost:6379
+      run: |
+        pytest --cov=src --cov-report=xml --cov-report=term
+    
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./coverage.xml
+        fail_ci_if_error: false
+
+  security:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install bandit safety
+    
+    - name: Bandit security check
+      run: |
+        bandit -r src/ -f json -o bandit-report.json
+      continue-on-error: true
+    
+    - name: Safety check
+      run: |
+        safety check --json
+      continue-on-error: true
+
+  build:
+    needs: [lint, test, security]
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+Add GitHub Actions CI/CD pipeline workflow      uses: docker/setup-buildx-action@v2
+    
+    - name: Build Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        push: false
+        tags: portfolio-system:latest
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  notify:
+    needs: [build]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Check build status
+      run: |
+        if [ "${{ needs.build.result }}" = "failure" ]; then
+          echo "Build failed"
+          exit 1
+        fi
+        echo "Build successful"
