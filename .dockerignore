@@ -1,0 +1,108 @@
+# Git
+.git
+.gitignore
+.gitattributes
+.github
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Virtual Environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.iml
+.project
+.pydevproject
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# Testing
+test-results/
+.pytest_cache/
+
+# Docs
+docs/_build/
+site/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Docker
+Dockerfile.*
+docker-compose*.yml
+.dockerignore
+
+# Node (if using frontend)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Build artifacts
+*.log
+*.pot
+*.mo
+.webassets-cache
+instance/
+.cache
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# CI/CD
+.github/workflows/
+.gitlab-ci.yml
+.travis.yml
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Local development
+.vscode/settings.json
+local_settings.py
