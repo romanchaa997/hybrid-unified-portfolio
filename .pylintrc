@@ -1,0 +1,41 @@
+[MASTER]
+max-line-length=120
+indent-string='    '
+jobs=0
+extension-pkg-allow-list=pydantic
+
+[MESSAGES CONTROL]
+# C0111: Missing module docstring
+# C0103: Invalid name
+# R0913: Too many arguments
+# W0212: Access to protected member
+# C0302: Too many lines in module
+disable=C0111,C0103,R0913,W0212,C0302,R0914,R0915,C0415
+
+[DESIGN]
+max-attributes=10
+max-arguments=8
+max-locals=15
+max-branches=15
+
+[VARIABLES]
+allowed-redefined-builtins=id
+
+[FORMAT]
+max-line-length=120
+indent-string='    '
+
+[BASIC]
+good-names=i,j,k,ex,Run,_,id,x,y,z,df,fn
+bad-names=foo,bar,baz,toto,tutu,tata
+
+[LOGGING]
+logging-format-style=new
+
+[IMPORTS]
+ignore-long-lines=^\s*(# )?<?https?://\S+>?$
+
+[SIMILARITIES]
+ignore-comments=yes
+ignore-docstrings=yes
+ignore-imports=yes
