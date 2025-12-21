@@ -1,0 +1,75 @@
+# Prometheus Configuration for Hybrid Unified Portfolio System
+# Monitors FastAPI application metrics, database connections, and system health
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'hybrid-portfolio'
+    environment: 'production'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+# Load rules once and periodically evaluate them
+rule_files:
+  - 'rules/*.yml'
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    metrics_path: '/metrics'
+
+  # FastAPI application metrics
+  - job_name: 'fastapi'
+    static_configs:
+      - targets: ['localhost:8000']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+    scrape_timeout: 5s
+    scheme: 'http'
+
+  # PostgreSQL exporter
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['localhost:9187']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # Redis exporter
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['localhost:9121']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  # Node exporter for system metrics
+  - job_name: 'node'
+    static_configs:
+      - targets: ['localhost:9100']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+# Remote write configuration for long-term storage
+remote_write:
+  - url: 'http://localhost:9009/api/v1/push'
+    queue_config:
+      capacity: 10000
+      max_shards: 200
+      min_shards: 1
+      max_samples_per_send: 500
+      batch_send_wait: 5s
+      min_backoff: 30ms
+      max_backoff: 100ms
+
+# Service discovery options (uncomment for production)
+# service_sd_configs:
+#   - files:
+#       - 'targets/*.yml'
+#     refresh_interval: 30s
