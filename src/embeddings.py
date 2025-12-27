@@ -166,3 +166,73 @@ class SimilarityMatcher:
         similarities = np.array([cls.cosine_similarity(query, item) for item in corpus])
         top_indices = np.argsort(similarities)[::-1][:top_k]
         return [(idx, float(similarities[idx])) for idx in top_indices]
+
+
+
+# ============== OPTIMIZATIONS ==============
+
+from functools import lru_cache
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+
+class CachedEmbeddingProvider:
+    """Caching wrapper for embedding providers to optimize repeated requests."""
+    
+    def __init__(self, provider: EmbeddingProvider, cache_size: int = 128):
+        """Initialize cached embedding provider."""
+        self.provider = provider
+        self.cache_size = cache_size
+        self._embed_cache = {}
+    
+    def embed(self, texts: List[str]) -> np.ndarray:
+        """Generate embeddings with caching."""
+        uncached_texts = []
+        uncached_indices = []
+        results = [None] * len(texts)
+        
+        # Check cache first
+        for idx, text in enumerate(texts):
+            text_hash = hash(text)
+            if text_hash in self._embed_cache:
+                results[idx] = self._embed_cache[text_hash]
+            else:
+                uncached_texts.append(text)
+                uncached_indices.append(idx)
+        
+        # Embed uncached texts
+        if uncached_texts:
+            embeddings = self.provider.embed(uncached_texts)
+            for idx, emb in zip(uncached_indices, embeddings):
+                text_hash = hash(uncached_texts[uncached_indices.index(idx)])
+                self._embed_cache[text_hash] = emb
+                results[idx] = emb
+                
+                # Limit cache size
+                if len(self._embed_cache) > self.cache_size:
+                    self._embed_cache.pop(next(iter(self._embed_cache)))
+        
+        return np.array(results)
+
+
+class AsyncEmbeddingProvider:
+    """Async wrapper for embedding providers."""
+    
+    def __init__(self, provider: EmbeddingProvider, max_workers: int = 4):
+        """Initialize async embedding provider."""
+        self.provider = provider
+        self.executor = ThreadPoolExecutor(max_workers=max_workers)
+    
+    async def embed_async(self, texts: List[str]) -> np.ndarray:
+        """Generate embeddings asynchronously."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(self.executor, self.provider.embed, texts)
+    
+    async def embed_batch_async(self, text_batches: List[List[str]], batch_size: int = 32) -> List[np.ndarray]:
+        """Process multiple batches asynchronously."""
+        tasks = [self.embed_async(batch) for batch in text_batches]
+        return await asyncio.gather(*tasks)
+
+
+def batch_embeddings(texts: List[str], batch_size: int = 32) -> List[List[str]]:
+    """Split texts into batches for efficient processing."""
+    return [texts[i:i + batch_size] for i in range(0, len(texts), batch_size)]
