@@ -195,3 +195,153 @@ async def close_db():
     """Close database connections on application shutdown."""
     manager = get_database_manager()
     manager.close()
+
+
+
+# ============== DATABASE OPTIMIZATIONS ==============
+
+from contextlib import contextmanager
+from functools import wraps
+from time import time
+import threading
+
+class DatabasePool:
+    """Connection pool manager for optimized database access."""
+    
+    def __init__(self, min_size: int = 5, max_size: int = 20, timeout: int = 30):
+        """Initialize connection pool.
+        
+        Args:
+            min_size: Minimum connections to maintain
+            max_size: Maximum connections allowed
+            timeout: Connection timeout in seconds
+        """
+        self.min_size = min_size
+        self.max_size = max_size
+        self.timeout = timeout
+        self._connections = []
+        self._available = threading.Semaphore(max_size)
+        self._lock = threading.Lock()
+        self._initialize_pool()
+    
+    def _initialize_pool(self):
+        """Initialize minimum connections."""
+        for _ in range(self.min_size):
+            conn = self._create_connection()
+            if conn:
+                self._connections.append(conn)
+    
+    def _create_connection(self):
+        """Create new database connection."""
+        try:
+            return get_database_manager().engine.connect()
+        except Exception as e:
+            logger.error(f"Failed to create connection: {e}")
+            return None
+    
+    @contextmanager
+    def get_connection(self):
+        """Get connection from pool."""
+        if not self._available.acquire(timeout=self.timeout):
+            raise TimeoutError("No available database connections")
+        
+        conn = None
+        try:
+            with self._lock:
+                if self._connections:
+                    conn = self._connections.pop()
+                else:
+                    conn = self._create_connection()
+            
+            if conn:
+                yield conn
+        finally:
+            if conn:
+                with self._lock:
+                    self._connections.append(conn)
+            self._available.release()
+
+
+def db_query_cache(ttl: int = 300):
+    """Decorator for caching database query results.
+    
+    Args:
+        ttl: Cache time-to-live in seconds
+    """
+    def decorator(func):
+        cache = {}
+        timestamps = {}
+        
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            # Generate cache key from arguments
+            cache_key = str((args, tuple(sorted(kwargs.items()))))
+            
+            # Check cache validity
+            if cache_key in cache:
+                cached_time = timestamps.get(cache_key, 0)
+                if time() - cached_time < ttl:
+                    logger.debug(f"Cache hit for {func.__name__}")
+                    return cache[cache_key]
+            
+            # Execute function
+            result = func(*args, **kwargs)
+            
+            # Store in cache
+            cache[cache_key] = result
+            timestamps[cache_key] = time()
+            
+            # Limit cache size
+            if len(cache) > 100:
+                oldest_key = min(timestamps, key=timestamps.get)
+                del cache[oldest_key]
+                del timestamps[oldest_key]
+            
+            return result
+        
+        return wrapper
+    return decorator
+
+
+class DatabaseMetrics:
+    """Track database performance metrics."""
+    
+    def __init__(self):
+        """Initialize metrics tracker."""
+        self.query_count = 0
+        self.total_time = 0
+        self.error_count = 0
+        self._lock = threading.Lock()
+    
+    def record_query(self, duration: float, success: bool = True):
+        """Record query execution.
+        
+        Args:
+            duration: Query execution time in seconds
+            success: Whether query succeeded
+        """
+        with self._lock:
+            self.query_count += 1
+            self.total_time += duration
+            if not success:
+                self.error_count += 1
+    
+    def get_stats(self) -> dict:
+        """Get current performance statistics."""
+        with self._lock:
+            avg_time = self.total_time / self.query_count if self.query_count > 0 else 0
+            return {
+                "total_queries": self.query_count,
+                "average_time": avg_time,
+                "total_time": self.total_time,
+                "error_count": self.error_count,
+                "error_rate": self.error_count / self.query_count if self.query_count > 0 else 0
+            }
+
+
+# Global database metrics instance
+_db_metrics = DatabaseMetrics()
+
+def get_db_metrics() -> DatabaseMetrics:
+    """Get global database metrics instance."""
+    return _db_metrics
