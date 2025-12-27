@@ -205,3 +205,108 @@ class PortfolioSearchService:
         except Exception as e:
             logger.error(f"Search failed: {e}")
             return []
+
+
+
+# ============== SEARCH OPTIMIZATIONS ==============
+
+from functools import lru_cache
+from time import time
+
+class OptimizedHybridSearchEngine(HybridSearchEngine):
+    """Enhanced hybrid search with result caching and dynamic weighting."""
+    
+    def __init__(self, documents: List[Dict], embeddings: np.ndarray = None, cache_ttl: int = 3600):
+        """Initialize optimized hybrid search engine.
+        
+        Args:
+            documents: List of document dictionaries
+            embeddings: Pre-computed embeddings (optional)
+            cache_ttl: Cache time-to-live in seconds
+        """
+        super().__init__(documents, embeddings)
+        self.cache_ttl = cache_ttl
+        self._result_cache = {}
+        self._cache_timestamps = {}
+    
+    def search(
+        self, 
+        query: str, 
+        query_embedding: np.ndarray = None, 
+        mode: SearchMode = SearchMode.HYBRID,
+        top_k: int = 5,
+        vector_weight: float = 0.6,
+        keyword_weight: float = 0.4,
+        use_cache: bool = True
+    ) -> List[SearchResult]:
+        """Perform hybrid search with optional caching."""
+        # Generate cache key
+        cache_key = f"{query}_{mode}_{vector_weight}_{keyword_weight}_{top_k}"
+        
+        # Check cache validity
+        if use_cache and cache_key in self._result_cache:
+            cache_time = self._cache_timestamps.get(cache_key, 0)
+            if time() - cache_time < self.cache_ttl:
+                return self._result_cache[cache_key]
+        
+        # Perform search
+        results = super().search(
+            query, 
+            query_embedding, 
+            mode, 
+            top_k, 
+            vector_weight, 
+            keyword_weight
+        )
+        
+        # Cache results
+        if use_cache:
+            self._result_cache[cache_key] = results
+            self._cache_timestamps[cache_key] = time()
+            
+            # Limit cache size
+            if len(self._result_cache) > 100:
+                oldest_key = min(self._cache_timestamps, key=self._cache_timestamps.get)
+                del self._result_cache[oldest_key]
+                del self._cache_timestamps[oldest_key]
+        
+        return results
+    
+    def adaptive_search(
+        self,
+        query: str,
+        query_embedding: np.ndarray = None,
+        top_k: int = 5
+    ) -> List[SearchResult]:
+        """Perform adaptive search with dynamic weight adjustment.
+        
+        Adjusts vector/keyword weights based on query characteristics.
+        """
+        # Analyze query characteristics
+        query_len = len(query.split())
+        
+        # Dynamic weight adjustment
+        if query_len < 3:
+            # Short queries: favor keyword matching
+            vector_weight, keyword_weight = 0.4, 0.6
+        elif query_len > 10:
+            # Long queries: favor semantic matching  
+            vector_weight, keyword_weight = 0.7, 0.3
+        else:
+            # Balanced queries
+            vector_weight, keyword_weight = 0.55, 0.45
+        
+        return self.search(
+            query,
+            query_embedding,
+            SearchMode.HYBRID,
+            top_k,
+            vector_weight,
+            keyword_weight
+        )
+
+
+def clear_search_cache(service: OptimizedHybridSearchEngine):
+    """Clear search result cache."""
+    service._result_cache.clear()
+    service._cache_timestamps.clear()
