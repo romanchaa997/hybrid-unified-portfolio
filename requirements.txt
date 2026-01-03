@@ -17,7 +17,7 @@ pyyaml==6.0.1
 
 # GitHub Integration
 PyGithub==2.1.1
-requests==2.31.0
+requests==2.32.4
 
 # Database
 sqlalchemy==2.0.23
